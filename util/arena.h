@@ -39,17 +39,17 @@ class Arena {
   char* AllocateNewBlock(size_t block_bytes);
 
   // Allocation state
-  char* alloc_ptr_;
-  size_t alloc_bytes_remaining_;
+  char* alloc_ptr_;   // 当前已使用内存的指针
+  size_t alloc_bytes_remaining_;  // 剩余内存字节数
 
   // Array of new[] allocated memory blocks
-  std::vector<char*> blocks_;
+  std::vector<char*> blocks_;   // 实际分配的内存池
 
   // Total memory usage of the arena.
   //
   // TODO(costan): This member is accessed via atomics, but the others are
   //               accessed without any locking. Is this OK?
-  std::atomic<size_t> memory_usage_;
+  std::atomic<size_t> memory_usage_;  // 记录内存使用情况
 };
 
 inline char* Arena::Allocate(size_t bytes) {
@@ -57,7 +57,7 @@ inline char* Arena::Allocate(size_t bytes) {
   // 0-byte allocations, so we disallow them here (we don't need
   // them for our internal use).
   assert(bytes > 0);
-  if (bytes <= alloc_bytes_remaining_) {
+  if (bytes <= alloc_bytes_remaining_) {  // 如果剩余内存够用就不必申请新的内存
     char* result = alloc_ptr_;
     alloc_ptr_ += bytes;
     alloc_bytes_remaining_ -= bytes;

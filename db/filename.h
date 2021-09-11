@@ -19,13 +19,13 @@ namespace leveldb {
 class Env;
 
 enum FileType {
-  kLogFile,
-  kDBLockFile,
-  kTableFile,
-  kDescriptorFile,
-  kCurrentFile,
-  kTempFile,
-  kInfoLogFile  // Either the current one, or an old one
+  kLogFile,         //  WAL 日志文件 .log
+  kDBLockFile,      // db 锁文件，文件名为 LOCK，通过 LOCK 文件加文件锁(flock) 来实现只有一个实例能操作 db
+  kTableFile,       // sstable 文件，文件名为 .sst，从 1.14 版本后文件名为 .ldb
+  kDescriptorFile,  // db 元数据文件，存储系统中 version 信息，文件名为 MANIFEST，每当 db 发生 compaction 时对应的 versionedit 回记录到 descriptor 文件中
+  kCurrentFile,     // 记录当前使用 description 文件名，文件名为CURRENT
+  kTempFile,        // 临时文件，db 在修复过程中回产生临时文件，文件名为 .dbtmp
+  kInfoLogFile  // Either the current one, or an old one  运行过程中的日志文件，文件名为 LOG
 };
 
 // Return the name of the log file with the specified number

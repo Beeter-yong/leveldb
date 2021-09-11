@@ -34,7 +34,7 @@ class BytewiseComparatorImpl : public Comparator {
     size_t min_length = std::min(start->size(), limit.size());
     size_t diff_index = 0;
     while ((diff_index < min_length) &&
-           ((*start)[diff_index] == limit[diff_index])) {
+           ((*start)[diff_index] == limit[diff_index])) {   // 去掉公共部分，再去排序
       diff_index++;
     }
 
