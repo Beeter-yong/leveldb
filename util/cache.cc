@@ -40,17 +40,19 @@ namespace {
 
 // An entry is a variable length heap-allocated structure.  Entries
 // are kept in a circular doubly linked list ordered by access time.
+// LRUHandle 是 HashTable 和 LRU 的单位节点
+// 使用双向链表，在 LRU 中淘汰数据可以迅速找到上一个节点和下一个节点
 struct LRUHandle {
-  void* value;
-  void (*deleter)(const Slice&, void* value);
-  LRUHandle* next_hash;
-  LRUHandle* next;
-  LRUHandle* prev;
-  size_t charge;  // TODO(opt): Only allow uint32_t?
-  size_t key_length;
-  bool in_cache;     // Whether entry is in the cache.
-  uint32_t refs;     // References, including cache reference, if present.
-  uint32_t hash;     // Hash of key(); used for fast sharding and comparisons
+  void* value;      // 具体的值
+  void (*deleter)(const Slice&, void* value);   // 自定义的回调函数
+  LRUHandle* next_hash;   // 用于 hashtable 冲突时，下一个节点位置
+  LRUHandle* next;        // LRU 双向链表中下一个节点
+  LRUHandle* prev;        // LRU 双向链表中上一个节点
+  size_t charge;  // TODO(opt): Only allow uint32_t?  记录当前 value 占用多少内存
+  size_t key_length;      // 数据 key 的长度
+  bool in_cache;     // Whether entry is in the cache.    当前 key 是否在缓存中
+  uint32_t refs;     // References, including cache reference, if present.    当前节点被多少组件引用，不能简单删除
+  uint32_t hash;     // Hash of key(); used for fast sharding and comparisons 记录当前 key 的 hash 值
   char key_data[1];  // Beginning of key
 
   Slice key() const {
@@ -67,6 +69,7 @@ struct LRUHandle {
 // table implementations in some of the compiler/runtime combinations
 // we have tested.  E.g., readrandom speeds up by ~5% over the g++
 // 4.4.3's builtin hashtable.
+// leveldb 自己实现 hash 表
 class HandleTable {
  public:
   HandleTable() : length_(0), elems_(0), list_(nullptr) { Resize(); }
@@ -134,7 +137,7 @@ class HandleTable {
         LRUHandle* next = h->next_hash;
         uint32_t hash = h->hash;
         LRUHandle** ptr = &new_list[hash & (new_length - 1)];
-        h->next_hash = *ptr;
+        h->next_hash = *ptr;  // 尾插法
         *ptr = h;
         h = next;
         count++;
@@ -177,22 +180,22 @@ class LRUCache {
   bool FinishErase(LRUHandle* e) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Initialized before use.
-  size_t capacity_;
+  size_t capacity_;     // LRU 容量
 
   // mutex_ protects the following state.
   mutable port::Mutex mutex_;
-  size_t usage_ GUARDED_BY(mutex_);
+  size_t usage_ GUARDED_BY(mutex_);   // 获取当前 LRUCache 已经使用的内存
 
   // Dummy head of LRU list.
   // lru.prev is newest entry, lru.next is oldest entry.
   // Entries have refs==1 and in_cache==true.
-  LRUHandle lru_ GUARDED_BY(mutex_);
+  LRUHandle lru_ GUARDED_BY(mutex_);  // prev 指向最新加入的 entry；next 指向最老的 entry。方便插入删除
 
   // Dummy head of in-use list.
   // Entries are in use by clients, and have refs >= 2 and in_cache==true.
-  LRUHandle in_use_ GUARDED_BY(mutex_);
+  LRUHandle in_use_ GUARDED_BY(mutex_); // 正在被使用的 entry，即 refs>=2
 
-  HandleTable table_ GUARDED_BY(mutex_);
+  HandleTable table_ GUARDED_BY(mutex_);  // 为了记录 key 和节点的映射关系，通过 key 可以快速定位到某个节点
 };
 
 LRUCache::LRUCache() : capacity_(0), usage_(0) {
@@ -232,11 +235,13 @@ void LRUCache::Unref(LRUHandle* e) {
     free(e);
   } else if (e->in_cache && e->refs == 1) {
     // No longer in use; move to lru_ list.
+    // 当 refs = 1，表明不被调用者使用，仅在缓存中存在，所以将其放入缓存中
     LRU_Remove(e);
     LRU_Append(&lru_, e);
   }
 }
 
+// 将节点从 in-use 链表中移除
 void LRUCache::LRU_Remove(LRUHandle* e) {
   e->next->prev = e->prev;
   e->prev->next = e->next;
@@ -270,27 +275,29 @@ Cache::Handle* LRUCache::Insert(const Slice& key, uint32_t hash, void* value,
                                                 void* value)) {
   MutexLock l(&mutex_);
 
+  // 创建节点对象
   LRUHandle* e =
       reinterpret_cast<LRUHandle*>(malloc(sizeof(LRUHandle) - 1 + key.size()));
   e->value = value;
   e->deleter = deleter;
-  e->charge = charge;
+  e->charge = charge;  // 节点占用内存
   e->key_length = key.size();
   e->hash = hash;
   e->in_cache = false;
-  e->refs = 1;  // for the returned handle.
+  e->refs = 1;  // for the returned handle. 当插入一个数据时，必然是有线程调用此 kv，所以插入后立即供调用者使用，默认引用计数 refs 为1
   std::memcpy(e->key_data, key.data(), key.size());
 
-  if (capacity_ > 0) {
+  if (capacity_ > 0) { // capacity>0 表明 leveldb 开启了缓存
     e->refs++;  // for the cache's reference.
     e->in_cache = true;
-    LRU_Append(&in_use_, e);
+    LRU_Append(&in_use_, e); // 被调用者使用，节点移至 in-use 链表
     usage_ += charge;
-    FinishErase(table_.Insert(e));
+    FinishErase(table_.Insert(e));  // 二级 hash 表缓存新添加的数据
   } else {  // don't cache. (capacity_==0 is supported and turns off caching.)
     // next is read by key() in an assert, so it must be initialized
     e->next = nullptr;
   }
+  // 缓存满了后开始淘汰节点
   while (usage_ > capacity_ && lru_.next != &lru_) {
     LRUHandle* old = lru_.next;
     assert(old->refs == 1);

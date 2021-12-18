@@ -98,11 +98,14 @@ class LEVELDB_EXPORT Cache {
   virtual size_t TotalCharge() const = 0;
 
  private:
+  // 从 in-use 链表中移除
   void LRU_Remove(Handle* e);
+  // 从 in-use 链表中移动到普通表中
   void LRU_Append(Handle* e);
+  // 因为在多个地方引用，元素不能直接删除
   void Unref(Handle* e);
 
-  struct Rep;
+  struct Rep;   // 真正的数据
   Rep* rep_;
 };
 
