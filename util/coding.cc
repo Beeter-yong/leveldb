@@ -137,7 +137,7 @@ bool GetVarint64(Slice* input, uint64_t* value) {
   if (q == nullptr) {
     return false;
   } else {
-    *input = Slice(q, limit - q);
+    *input = Slice(q, limit - q);   // 已经读过的数据进行删除
     return true;
   }
 }

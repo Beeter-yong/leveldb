@@ -65,7 +65,7 @@ struct TableBuilder::Rep {
 TableBuilder::TableBuilder(const Options& options, WritableFile* file)
     : rep_(new Rep(options, file)) {
   if (rep_->filter_block != nullptr) {
-    rep_->filter_block->StartBlock(0);
+    rep_->filter_block->StartBlock(0);  // sst 刚建立，偏移量为 0
   }
 }
 
@@ -101,27 +101,31 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
 
   if (r->pending_index_entry) {
     assert(r->data_block.empty());
+    // 找到一个距离 last_key 最近的数据
     r->options.comparator->FindShortestSeparator(&r->last_key, key);
     std::string handle_encoding;
     r->pending_handle.EncodeTo(&handle_encoding);
+    // 加入 indexBlock 中
     r->index_block.Add(r->last_key, Slice(handle_encoding));
     r->pending_index_entry = false;
   }
 
+  // 每在 DataBlock 中添加一个 key，filterBlock 中也添加一个 key
   if (r->filter_block != nullptr) {
     r->filter_block->AddKey(key);
   }
 
   r->last_key.assign(key.data(), key.size());
   r->num_entries++;
-  r->data_block.Add(key, value);
+  r->data_block.Add(key, value);  // 数据 KV 写入 Block 构造器中
 
   const size_t estimated_block_size = r->data_block.CurrentSizeEstimate();
-  if (estimated_block_size >= r->options.block_size) {
+  if (estimated_block_size >= r->options.block_size) {  // Block 超过 4K 就要持久化存储，并开启新的 Block
     Flush();
   }
 }
 
+// 将一个 Block 进行压缩、校验等操作后刷入磁盘
 void TableBuilder::Flush() {
   Rep* r = rep_;
   assert(!r->closed);
@@ -131,9 +135,9 @@ void TableBuilder::Flush() {
   WriteBlock(&r->data_block, &r->pending_handle);
   if (ok()) {
     r->pending_index_entry = true;
-    r->status = r->file->Flush();
+    r->status = r->file->Flush(); // 输入磁盘
   }
-  if (r->filter_block != nullptr) {
+  if (r->filter_block != nullptr) { // DataBlock 刷入磁盘产生新的 DataBlock，FilterBlock 也要判断是否产生新的 Block
     r->filter_block->StartBlock(r->offset);
   }
 }
@@ -148,9 +152,9 @@ void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle) {
   Slice raw = block->Finish();
 
   Slice block_contents;
-  CompressionType type = r->options.compression;
+  CompressionType type = r->options.compression;  
   // TODO(postrelease): Support more compression options: zlib?
-  switch (type) {
+  switch (type) { // 是否压缩 Block 
     case kNoCompression:
       block_contents = raw;
       break;
@@ -182,11 +186,11 @@ void TableBuilder::WriteRawBlock(const Slice& block_contents,
   r->status = r->file->Append(block_contents);
   if (r->status.ok()) {
     char trailer[kBlockTrailerSize];
-    trailer[0] = type;
-    uint32_t crc = crc32c::Value(block_contents.data(), block_contents.size());
+    trailer[0] = type;  // 保存当前 Block 是否压缩
+    uint32_t crc = crc32c::Value(block_contents.data(), block_contents.size()); // crc 计算
     crc = crc32c::Extend(crc, trailer, 1);  // Extend crc to cover block type
     EncodeFixed32(trailer + 1, crc32c::Mask(crc));
-    r->status = r->file->Append(Slice(trailer, kBlockTrailerSize));
+    r->status = r->file->Append(Slice(trailer, kBlockTrailerSize)); // 写入文件
     if (r->status.ok()) {
       r->offset += block_contents.size() + kBlockTrailerSize;
     }
@@ -238,9 +242,10 @@ Status TableBuilder::Finish() {
   }
 
   // Write footer
+  // footer 最后写入
   if (ok()) {
     Footer footer;
-    footer.set_metaindex_handle(metaindex_block_handle);
+    footer.set_metaindex_handle(metaindex_block_handle);  // 写入对应的 handler
     footer.set_index_handle(index_block_handle);
     std::string footer_encoding;
     footer.EncodeTo(&footer_encoding);

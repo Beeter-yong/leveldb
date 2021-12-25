@@ -35,12 +35,14 @@ class BlockHandle {
   uint64_t size() const { return size_; }
   void set_size(uint64_t size) { size_ = size; }
 
+  // 对 offset_ 和 size_ 进行编码
   void EncodeTo(std::string* dst) const;
+  // 解码
   Status DecodeFrom(Slice* input);
 
  private:
-  uint64_t offset_;
-  uint64_t size_;
+  uint64_t offset_;   // 该 block 在文件中的起始偏移量
+  uint64_t size_;     // 该 block 内容大小
 };
 
 // Footer encapsulates the fixed information stored at the tail
@@ -50,7 +52,7 @@ class Footer {
   // Encoded length of a Footer.  Note that the serialization of a
   // Footer will always occupy exactly this many bytes.  It consists
   // of two block handles and a magic number.
-  enum { kEncodedLength = 2 * BlockHandle::kMaxEncodedLength + 8 };
+  enum { kEncodedLength = 2 * BlockHandle::kMaxEncodedLength + 8 };  // 最大程度 48 字节
 
   Footer() = default;
 
@@ -66,8 +68,8 @@ class Footer {
   Status DecodeFrom(Slice* input);
 
  private:
-  BlockHandle metaindex_handle_;
-  BlockHandle index_handle_;
+  BlockHandle metaindex_handle_;  // 指向 meta block 位置
+  BlockHandle index_handle_;      // 指向 data block 位置
 };
 
 // kTableMagicNumber was picked by running

@@ -31,7 +31,7 @@ Status BuildTable(const std::string& dbname, Env* env, const Options& options,
     TableBuilder* builder = new TableBuilder(options, file);
     meta->smallest.DecodeFrom(iter->key());
     Slice key;
-    for (; iter->Valid(); iter->Next()) {
+    for (; iter->Valid(); iter->Next()) {   // 遍历 immemtable 中的数据插入 Block 构造器中
       key = iter->key();
       builder->Add(key, iter->value());
     }

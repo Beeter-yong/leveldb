@@ -34,19 +34,19 @@ class FilterBlockBuilder {
   FilterBlockBuilder(const FilterBlockBuilder&) = delete;
   FilterBlockBuilder& operator=(const FilterBlockBuilder&) = delete;
 
-  void StartBlock(uint64_t block_offset);
-  void AddKey(const Slice& key);
-  Slice Finish();
+  void StartBlock(uint64_t block_offset); // 根据 dataBlock 的偏移量构建新的 filterBlock
+  void AddKey(const Slice& key);  // 添加 key 到 filterBlock 中
+  Slice Finish(); // 保存每个 filter 的偏移量
 
  private:
-  void GenerateFilter();
+  void GenerateFilter();  // 生成一个 filter
 
-  const FilterPolicy* policy_;
-  std::string keys_;             // Flattened key contents
-  std::vector<size_t> start_;    // Starting index in keys_ of each key
-  std::string result_;           // Filter data computed so far
-  std::vector<Slice> tmp_keys_;  // policy_->CreateFilter() argument
-  std::vector<uint32_t> filter_offsets_;
+  const FilterPolicy* policy_;     // 使用的过滤器策略，当前是 bloom filter
+  std::string keys_;             // Flattened key contents  所有的 key
+  std::vector<size_t> start_;    // Starting index in keys_ of each key 每一个 key 在 key_ 中的偏移量
+  std::string result_;           // Filter data computed so far 保存所有 key 的构建 filter 的二进制数据
+  std::vector<Slice> tmp_keys_;  // policy_->CreateFilter() argument // 更具 keys_ 和 start_ 恢复具体的 key 保存地方
+  std::vector<uint32_t> filter_offsets_; // 每 2KB 数据创建一个 filter，所以存在多个 fileter，这里存储filter 的偏移量
 };
 
 class FilterBlockReader {

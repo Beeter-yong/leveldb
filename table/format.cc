@@ -45,13 +45,13 @@ Status Footer::DecodeFrom(Slice* input) {
   const uint32_t magic_hi = DecodeFixed32(magic_ptr + 4);
   const uint64_t magic = ((static_cast<uint64_t>(magic_hi) << 32) |
                           (static_cast<uint64_t>(magic_lo)));
-  if (magic != kTableMagicNumber) {
+  if (magic != kTableMagicNumber) {   // 解析 Footer 中的 魔数，如果和 leveldb 设置不一致，说明文件有改动
     return Status::Corruption("not an sstable (bad magic number)");
   }
 
-  Status result = metaindex_handle_.DecodeFrom(input);
-  if (result.ok()) {
-    result = index_handle_.DecodeFrom(input);
+  Status result = metaindex_handle_.DecodeFrom(input); // 解码 meta 偏移量和大小
+  if (result.ok()) {  
+    result = index_handle_.DecodeFrom(input);   // 解码 index 偏移量和大小
   }
   if (result.ok()) {
     // We skip over any leftover data (just padding for now) in "input"

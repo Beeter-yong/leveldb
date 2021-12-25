@@ -20,8 +20,9 @@ FilterBlockBuilder::FilterBlockBuilder(const FilterPolicy* policy)
 
 void FilterBlockBuilder::StartBlock(uint64_t block_offset) {
   uint64_t filter_index = (block_offset / kFilterBase);
+  uint64_t num =  filter_offsets_.size()
   assert(filter_index >= filter_offsets_.size());
-  while (filter_index > filter_offsets_.size()) {
+  while (filter_index > filter_offsets_.size()) { // 2KB 生成一个 Filter
     GenerateFilter();
   }
 }
@@ -49,7 +50,7 @@ Slice FilterBlockBuilder::Finish() {
 }
 
 void FilterBlockBuilder::GenerateFilter() {
-  const size_t num_keys = start_.size();
+  const size_t num_keys = start_.size();  // 当前新添加的 key 的个数，如果没有数据则记录上一次 result 的大小充当占位符
   if (num_keys == 0) {
     // Fast path if there are no keys for this filter
     filter_offsets_.push_back(result_.size());
@@ -59,7 +60,7 @@ void FilterBlockBuilder::GenerateFilter() {
   // Make list of keys from flattened key structure
   start_.push_back(keys_.size());  // Simplify length computation
   tmp_keys_.resize(num_keys);
-  for (size_t i = 0; i < num_keys; i++) {
+  for (size_t i = 0; i < num_keys; i++) {   // 根据 keys_ 和 start_ 恢复出具体的 key 值放入 tem_keys_
     const char* base = keys_.data() + start_[i];
     size_t length = start_[i + 1] - start_[i];
     tmp_keys_[i] = Slice(base, length);
@@ -67,7 +68,7 @@ void FilterBlockBuilder::GenerateFilter() {
 
   // Generate filter for current set of keys and append to result_.
   filter_offsets_.push_back(result_.size());
-  policy_->CreateFilter(&tmp_keys_[0], static_cast<int>(num_keys), &result_);
+  policy_->CreateFilter(&tmp_keys_[0], static_cast<int>(num_keys), &result_); // 针对输入的 2KB key 数据构建 boom filter，并将构造好的结果追加到 result 中
 
   tmp_keys_.clear();
   keys_.clear();
@@ -80,21 +81,23 @@ FilterBlockReader::FilterBlockReader(const FilterPolicy* policy,
   size_t n = contents.size();
   if (n < 5) return;  // 1 byte for base_lg_ and 4 for start of offset array
   base_lg_ = contents[n - 1];
-  uint32_t last_word = DecodeFixed32(contents.data() + n - 5);
+  uint32_t last_word = DecodeFixed32(contents.data() + n - 5);  // 解析出有记录 filter offset 的偏移量大小
   if (last_word > n - 5) return;
   data_ = contents.data();
-  offset_ = data_ + last_word;
-  num_ = (n - 5 - last_word) / 4;
+  offset_ = data_ + last_word;    // filter 的偏移量和大小
+  num_ = (n - 5 - last_word) / 4; // 计算有多少个 filter
 }
 
 bool FilterBlockReader::KeyMayMatch(uint64_t block_offset, const Slice& key) {
-  uint64_t index = block_offset >> base_lg_;
+  // 根据 indexBlock 求出 key 所在 DataBlock 得偏移量
+  // 根据 DataBlock 偏移量求其 Filter 位置
+  uint64_t index = block_offset >> base_lg_; 
   if (index < num_) {
-    uint32_t start = DecodeFixed32(offset_ + index * 4);
-    uint32_t limit = DecodeFixed32(offset_ + index * 4 + 4);
+    uint32_t start = DecodeFixed32(offset_ + index * 4);      // 所在 Filter 起始偏移量
+    uint32_t limit = DecodeFixed32(offset_ + index * 4 + 4);  // 所在 Filter 结尾偏移量
     if (start <= limit && limit <= static_cast<size_t>(offset_ - data_)) {
-      Slice filter = Slice(data_ + start, limit - start);
-      return policy_->KeyMayMatch(key, filter);
+      Slice filter = Slice(data_ + start, limit - start);     // 解析对应 Filter 内容
+      return policy_->KeyMayMatch(key, filter);       // 判断 key 是否在对应 Filter 中
     } else if (start == limit) {
       // Empty filters do not match any keys
       return false;

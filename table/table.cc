@@ -38,18 +38,18 @@ struct Table::Rep {
 Status Table::Open(const Options& options, RandomAccessFile* file,
                    uint64_t size, Table** table) {
   *table = nullptr;
-  if (size < Footer::kEncodedLength) {
+  if (size < Footer::kEncodedLength) {  // 判断读取的 sst 大小是否大于 48 字节，因为 footer 固定 48 字节，sst 如果不大于 48，说明有问题，直接返回，也不用解析数据了。
     return Status::Corruption("file is too short to be an sstable");
   }
 
   char footer_space[Footer::kEncodedLength];
   Slice footer_input;
   Status s = file->Read(size - Footer::kEncodedLength, Footer::kEncodedLength,
-                        &footer_input, footer_space);
+                        &footer_input, footer_space);   // 读取 Footer，即 SST 末尾 48 字节数据
   if (!s.ok()) return s;
 
   Footer footer;
-  s = footer.DecodeFrom(&footer_input);
+  s = footer.DecodeFrom(&footer_input);   // 解码 Footer
   if (!s.ok()) return s;
 
   // Read the index block

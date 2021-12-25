@@ -60,6 +60,7 @@ size_t BlockBuilder::CurrentSizeEstimate() const {
 
 Slice BlockBuilder::Finish() {
   // Append restart array
+  // 保存重启点
   for (size_t i = 0; i < restarts_.size(); i++) {
     PutFixed32(&buffer_, restarts_[i]);
   }
@@ -77,8 +78,8 @@ void BlockBuilder::Add(const Slice& key, const Slice& value) {
   size_t shared = 0;
   if (counter_ < options_->block_restart_interval) {
     // See how much sharing to do with previous string
-    const size_t min_length = std::min(last_key_piece.size(), key.size());
-    while ((shared < min_length) && (last_key_piece[shared] == key[shared])) {
+    const size_t min_length = std::min(last_key_piece.size(), key.size());  // 这个 min_length 应该是求添加的 key 大小吧，为什么不直接等于 key.size
+    while ((shared < min_length) && (last_key_piece[shared] == key[shared])) { // 计算和前一个 key 的共享部分大小
       shared++;
     }
   } else {
