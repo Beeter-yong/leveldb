@@ -80,6 +80,7 @@ static const uint64_t kTableMagicNumber = 0xdb4775248b80fb57ull;
 // 1-byte type + 32-bit crc
 static const size_t kBlockTrailerSize = 5;
 
+// 主要计算 restart_offset，将对象转换为 Block
 struct BlockContents {
   Slice data;           // Actual contents of data
   bool cachable;        // True iff data can be cached

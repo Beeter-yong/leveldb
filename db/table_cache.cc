@@ -45,7 +45,7 @@ Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
   EncodeFixed64(buf, file_number);
   Slice key(buf, sizeof(buf));
   *handle = cache_->Lookup(key);
-  if (*handle == nullptr) {
+  if (*handle == nullptr) {   // 如果缓存未查找到就在磁盘中查找
     std::string fname = TableFileName(dbname_, file_number);
     RandomAccessFile* file = nullptr;
     Table* table = nullptr;
@@ -60,7 +60,7 @@ Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
       s = Table::Open(options_, file, file_size, &table);
     }
 
-    if (!s.ok()) {
+    if (!s.ok()) {  // 磁盘找到的文件放入缓存中
       assert(table == nullptr);
       delete file;
       // We do not cache error results so that if the error is transient,
@@ -102,11 +102,11 @@ Status TableCache::Get(const ReadOptions& options, uint64_t file_number,
                        void (*handle_result)(void*, const Slice&,
                                              const Slice&)) {
   Cache::Handle* handle = nullptr;
-  Status s = FindTable(file_number, file_size, &handle);
+  Status s = FindTable(file_number, file_size, &handle);  // 查找 tableCache
   if (s.ok()) {
     Table* t = reinterpret_cast<TableAndFile*>(cache_->Value(handle))->table;
-    s = t->InternalGet(options, k, arg, handle_result);
-    cache_->Release(handle);
+    s = t->InternalGet(options, k, arg, handle_result); // 在 Table 中查找
+    cache_->Release(handle);  // 及时释放句柄，否则缓存永远不会剔除
   }
   return s;
 }

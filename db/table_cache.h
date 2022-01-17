@@ -31,25 +31,29 @@ class TableCache {
   // underlies the returned iterator.  The returned "*tableptr" object is owned
   // by the cache and should not be deleted, and is valid for as long as the
   // returned iterator is live.
+  // 对外返回对应 SST 的迭代器
   Iterator* NewIterator(const ReadOptions& options, uint64_t file_number,
                         uint64_t file_size, Table** tableptr = nullptr);
 
   // If a seek to internal key "k" in specified file finds an entry,
   // call (*handle_result)(arg, found_key, found_value).
+  // 查询指定 Key
   Status Get(const ReadOptions& options, uint64_t file_number,
              uint64_t file_size, const Slice& k, void* arg,
              void (*handle_result)(void*, const Slice&, const Slice&));
 
   // Evict any entry for the specified file number
+  // 淘汰指定 SST
   void Evict(uint64_t file_number);
 
  private:
+ // 查找指定 SST，先在缓存中查找，如果缓存没有则在磁盘读取后放入缓存
   Status FindTable(uint64_t file_number, uint64_t file_size, Cache::Handle**);
 
-  Env* const env_;
-  const std::string dbname_;
-  const Options& options_;
-  Cache* cache_;
+  Env* const env_;   // 不同 OS 读取 SST 文件方法不一样，这里要指明使用哪种 OS 环境
+  const std::string dbname_;  // SST 名字
+  const Options& options_;    // Cache 参数配置
+  Cache* cache_;    // 缓存基类句柄
 };
 
 }  // namespace leveldb

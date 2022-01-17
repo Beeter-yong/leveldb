@@ -29,12 +29,13 @@ Block::Block(const BlockContents& contents)
   if (size_ < sizeof(uint32_t)) {
     size_ = 0;  // Error marker
   } else {
-    size_t max_restarts_allowed = (size_ - sizeof(uint32_t)) / sizeof(uint32_t);
-    if (NumRestarts() > max_restarts_allowed) {
+    // 最后 4 个字节保存 restart 总个数
+    size_t max_restarts_allowed = (size_ - sizeof(uint32_t)) / sizeof(uint32_t);  // 计算最多容纳的restart 个数
+    if (NumRestarts() > max_restarts_allowed) { // 存储的restart超过理论最大值即出现错误
       // The size is too small for NumRestarts()
       size_ = 0;
     } else {
-      restart_offset_ = size_ - (1 + NumRestarts()) * sizeof(uint32_t);
+      restart_offset_ = size_ - (1 + NumRestarts()) * sizeof(uint32_t); // 泛解析数据部分长度
     }
   }
 }
@@ -161,6 +162,7 @@ class Block::Iter : public Iterator {
     } while (ParseNextKey() && NextEntryOffset() < original);
   }
 
+  // 二分查找
   void Seek(const Slice& target) override {
     // Binary search in restart array to find the last restart point
     // with a key < target
@@ -186,8 +188,9 @@ class Block::Iter : public Iterator {
 
     while (left < right) {
       uint32_t mid = (left + right + 1) / 2;
-      uint32_t region_offset = GetRestartPoint(mid);
+      uint32_t region_offset = GetRestartPoint(mid);  // 获取对应重启点位置
       uint32_t shared, non_shared, value_length;
+      // 解析出非共享部分 key
       const char* key_ptr =
           DecodeEntry(data_ + region_offset, data_ + restarts_, &shared,
                       &non_shared, &value_length);
@@ -196,7 +199,7 @@ class Block::Iter : public Iterator {
         return;
       }
       Slice mid_key(key_ptr, non_shared);
-      if (Compare(mid_key, target) < 0) {
+      if (Compare(mid_key, target) < 0) { // 比较两个 key 大小
         // Key at "mid" is smaller than "target".  Therefore all
         // blocks before "mid" are uninteresting.
         left = mid;
